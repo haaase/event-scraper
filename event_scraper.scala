@@ -64,7 +64,7 @@ def sendSignalMessage(m: String) =
         message = m,
         groupId = sys.env.get("EVENTSCRAPER_GROUPID").get
       ),
-      id = "0"
+      id = java.util.UUID.randomUUID.toString
     )
   )
   println(jsonMsg)
