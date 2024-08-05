@@ -5,22 +5,27 @@
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
 //> using dep org.xerial:sqlite-jdbc:3.46.0.0
 //> using file model.scala
-import java.nio.file.{Paths, Files}
+import java.nio.file.{Files, Paths}
 import java.nio.charset.StandardCharsets
-import net.ruippeixotog.scalascraper.browser.JsoupBrowser
-import net.ruippeixotog.scalascraper.dsl.DSL._
-import net.ruippeixotog.scalascraper.dsl.DSL.Extract._
-import net.ruippeixotog.scalascraper.dsl.DSL.Parse._
+import net.ruippeixotog.scalascraper.browser.{HtmlUnitBrowser, JsoupBrowser}
+import net.ruippeixotog.scalascraper.dsl.DSL.*
+import net.ruippeixotog.scalascraper.dsl.DSL.Extract.*
+import net.ruippeixotog.scalascraper.dsl.DSL.Parse.*
 import net.ruippeixotog.scalascraper.model.Element
-import upickle.default._
-import upickle._
-import doobie._
-import doobie.implicits._
+import upickle.default.*
+import upickle.*
+import doobie.*
+import doobie.implicits.*
 import cats.effect.IO
 import cats.effect.{IO, IOApp}
-import cats.implicits._
+import cats.implicits.*
+
 import scala.concurrent.ExecutionContext
 import cats.effect.unsafe.implicits.global
+import doobie.util.log.LogEvent
+
+import java.time.{LocalDate, ZoneId, ZoneOffset}
+import java.time.format.DateTimeFormatter
 
 val xa = Transactor.fromDriverManager[IO](
   driver = "org.sqlite.JDBC",
@@ -28,15 +33,22 @@ val xa = Transactor.fromDriverManager[IO](
   logHandler = None
 )
 
+val printSqlLogHandler: LogHandler[IO] = new LogHandler[IO] {
+  def run(logEvent: LogEvent): IO[Unit] =
+    IO {
+      println(logEvent.sql)
+    }
+}
+
 val createTable: ConnectionIO[Int] =
   sql"""CREATE TABLE "events" (
     "id"	INTEGER,
     "title"	TEXT NOT NULL,
-    "date"	INTEGER NOT NULL,
+    "start"	INTEGER NOT NULL,
+    "end"	INTEGER,
+    "announced"	INTEGER,
     PRIMARY KEY("id" AUTOINCREMENT)
-  )"""
-  .update.run
-
+  )""".update.run
 
 // global objects
 val browser = JsoupBrowser()
@@ -65,14 +77,22 @@ case class SignalCliParams(
 ) derives ReadWriter
 
 object Scraper806qm extends EventScraper:
+  val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
+//  val dt = formatter.parseDateTime(string)
   def getEvents: List[Event] =
     val doc = browser.get("https://806qm.de")
     val events = doc >> elementList(".type-tribe_events")
 
     def parseEvent(event: Element): Event =
-      val title = event >?> allText(".tribe-events-list-event-title")
-      val date = event >?> allText(".tribe-event-date-start")
-      Event(title=title.getOrElse(""), start = date.getOrElse(""), end = date.getOrElse(""))
+      val title = event >> allText(".tribe-events-list-event-title")
+      val dateString = (event >> allText(".tribe-event-date-start b"))
+      val date =
+        LocalDate
+          .parse(dateString, formatter)
+          .atStartOfDay()
+          .atZone(ZoneId.of("Europe/Berlin"))
+          .toEpochSecond
+      Event(title = title, start = date)
 
     events.map(parseEvent)
 
@@ -98,22 +118,27 @@ object Scraper806qm extends EventScraper:
 //  signalCli.stdin.writeLine(jsonMsg)
 //  signalCli.stdin.flush()
 
+def saveEvents(events: List[Event]): ConnectionIO[Int] =
+  val sql = "insert into events (title, start, end) values (?,?,?)"
+  Update[(String, EpochSecond, Option[EpochSecond])](sql)
+    .updateMany(events.map(e => (e.title, e.start, e.end)))
+
 object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(Scraper806qm)
   def run =
     for
       _ <- createTable.transact(xa).attempt // create db
       // scrape websites
-      scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).sequence
+      scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).parSequence
       // write results
-      events = scrapeResults.collect{case Right(e) => e}.flatten
+      events = scrapeResults.collect { case Right(e) => e }.flatten
+      _ <- saveEvents(events).transact(xa)
       _ <- IO.println(events.mkString("\n"))
       // print errors
-      errors = scrapeResults.collect{case Left(t) => t.getMessage}
+      errors = scrapeResults.collect { case Left(t) => t.getMessage }
       _ <- IO.println(errors.mkString("\n"))
     yield ()
 
-@main
 def testSignalCli() =
   createTable.transact(xa).unsafeRunSync()
 // sendSignalMessage(s"${getEvents}")

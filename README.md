@@ -5,3 +5,8 @@ podman run --rm --volume ./signal-cli-data:/var/lib/signal-cli:Z --entrypoint "/
 
 scala-cli package event_scraper.scala -o event-scraper -f --assembly
 podman build --tag signal-cli .
+
+## Packaging as Native Image
+```shell
+scala-cli package --native-image -f -o event-scraper event_scraper.scala -- --no-fallback --enable-url-protocols=http,https
+```
