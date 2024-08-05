@@ -17,6 +17,8 @@ import upickle._
 import doobie._
 import doobie.implicits._
 import cats.effect.IO
+import cats.effect.{IO, IOApp}
+import cats.implicits._
 import scala.concurrent.ExecutionContext
 import cats.effect.unsafe.implicits.global
 
@@ -25,7 +27,6 @@ val xa = Transactor.fromDriverManager[IO](
   url = "jdbc:sqlite:events.db",
   logHandler = None
 )
-
 
 val createTable: ConnectionIO[Int] =
   sql"""CREATE TABLE "events" (
@@ -97,10 +98,24 @@ object Scraper806qm extends EventScraper:
 //  signalCli.stdin.writeLine(jsonMsg)
 //  signalCli.stdin.flush()
 
+object main extends IOApp.Simple:
+  val scrapers: List[EventScraper] = List(Scraper806qm)
+  def run =
+    for
+      _ <- createTable.transact(xa).attempt // create db
+      // scrape websites
+      scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).sequence
+      // write results
+      events = scrapeResults.collect{case Right(e) => e}.flatten
+      _ <- IO.println(events.mkString("\n"))
+      // print errors
+      errors = scrapeResults.collect{case Left(t) => t.getMessage}
+      _ <- IO.println(errors.mkString("\n"))
+    yield ()
+
 @main
 def testSignalCli() =
   createTable.transact(xa).unsafeRunSync()
-  val scrapers: List[EventScraper] = List(Scraper806qm)
 // sendSignalMessage(s"${getEvents}")
 //  var output = signalCli.stdout.readLine()
 //  while (output != null) {
