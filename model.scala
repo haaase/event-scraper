@@ -1,8 +1,8 @@
 //// type definitions
 type EpochSecond = Long
 case class Event(
-    id: Option[Int] = None,
     title: String,
+    location: String,
     start: EpochSecond,
     end: Option[EpochSecond] = None,
     announced: Option[EpochSecond] = None

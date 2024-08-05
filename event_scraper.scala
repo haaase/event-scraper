@@ -4,6 +4,7 @@
 //> using dep com.lihaoyi::os-lib::0.10.3
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
 //> using dep org.xerial:sqlite-jdbc:3.46.0.0
+//> using dep org.slf4j:slf4j-simple:2.0.13
 //> using file model.scala
 import java.nio.file.{Files, Paths}
 import java.nio.charset.StandardCharsets
@@ -41,13 +42,15 @@ val printSqlLogHandler: LogHandler[IO] = new LogHandler[IO] {
 }
 
 val createTable: ConnectionIO[Int] =
-  sql"""CREATE TABLE "events" (
+  sql"""CREATE TABLE IF NOT EXISTS "events" (
     "id"	INTEGER,
     "title"	TEXT NOT NULL,
-    "start"	INTEGER NOT NULL,
-    "end"	INTEGER,
-    "announced"	INTEGER,
-    PRIMARY KEY("id" AUTOINCREMENT)
+    "location" TEXT NOT NULL,
+    "start"	NUMERIC NOT NULL,
+    "end"	NUMERIC,
+    "announced"	NUMERIC,
+    PRIMARY KEY("id" AUTOINCREMENT),
+    UNIQUE("title", "location", "start")
   )""".update.run
 
 // global objects
@@ -92,7 +95,7 @@ object Scraper806qm extends EventScraper:
           .atStartOfDay()
           .atZone(ZoneId.of("Europe/Berlin"))
           .toEpochSecond
-      Event(title = title, start = date)
+      Event(title = title, location = "806qm", start = date)
 
     events.map(parseEvent)
 
@@ -119,15 +122,15 @@ object Scraper806qm extends EventScraper:
 //  signalCli.stdin.flush()
 
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
-  val sql = "insert into events (title, start, end) values (?,?,?)"
-  Update[(String, EpochSecond, Option[EpochSecond])](sql)
-    .updateMany(events.map(e => (e.title, e.start, e.end)))
+  val sql = "insert or ignore into events (title, location, start, end) values (?,?,?,?)"
+  Update[(String, String, EpochSecond, Option[EpochSecond])](sql)
+    .updateMany(events.map(e => (e.title, e.location, e.start, e.end)))
 
 object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(Scraper806qm)
   def run =
     for
-      _ <- createTable.transact(xa).attempt // create db
+      _ <- createTable.transact(xa) // create db
       // scrape websites
       scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).parSequence
       // write results
