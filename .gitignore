@@ -3,3 +3,6 @@
 .scala-build
 signal-cli-data
 event-scraper
+events.db
+*.build_artifacts.txt
+.idea
