@@ -10,3 +10,13 @@ podman build --tag signal-cli .
 ```shell
 scala-cli package --native-image -f -o event-scraper event_scraper.scala -- --no-fallback --enable-url-protocols=http,https
 ```
+
+## Receive Signal Messages
+```shell
+podman run --rm --user root -it -v ./signal-cli-data:/var/lib/signal-cli:Z registry.gitlab.com/packaging/signal-cli/signal-cli-native:latest -v --config /var/lib/signal-cli -a PHONENUM receive
+```
+
+## Start Daemon
+```shell
+podman run --rm --network=host --user root -it -v ./signal-cli-data:/var/lib/signal-cli:Z registry.gitlab.com/packaging/signal-cli/signal-cli-native:latest -v --config /var/lib/signal-cli -a PHONENUM daemon --http localhost:8094
+```

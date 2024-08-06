@@ -1,5 +1,6 @@
 //> using scala 3.4.2
-//> using dep "net.ruippeixotog::scala-scraper::3.1.1"
+//> using dep net.ruippeixotog::scala-scraper::3.1.1
+//> using dep com.softwaremill.sttp.client3::core:3.9.7
 //> using dep com.lihaoyi::upickle::3.1.0
 //> using dep com.lihaoyi::os-lib::0.10.3
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
@@ -15,6 +16,7 @@ import doobie.*
 import doobie.implicits.*
 import cats.effect.{IO, IOApp}
 import cats.implicits.*
+import sttp.client3._
 
 import scala.concurrent.ExecutionContext
 import cats.effect.unsafe.implicits.global
@@ -84,20 +86,26 @@ case class SignalCliParams(
 //    Paths.get("events.txt"),
 //    getEventList().getBytes(StandardCharsets.UTF_8)
 //  )
+val backend = HttpClientSyncBackend()
 
-//def sendSignalMessage(m: String): Unit =
-//  val jsonMsg = write(
-//    SignalCliMessage(
-//      jsonrpc = "2.0",
-//      method = "send",
-//      params = SignalCliParams(
-//        message = m,
-//        groupId = sys.env("EVENTSCRAPER_GROUPID")
-//      ),
-//      id = java.util.UUID.randomUUID.toString
-//    )
-//  )
-//  println(jsonMsg)
+def sendSignalMessage(m: String): Unit =
+  val jsonMsg = write(
+    SignalCliMessage(
+      jsonrpc = "2.0",
+      method = "send",
+      params = SignalCliParams(
+        message = m,
+        groupId = sys.env("EVENTSCRAPER_GROUPID")
+      ),
+      id = java.util.UUID.randomUUID.toString
+    )
+  )
+  println(jsonMsg)
+  val response = basicRequest
+    .contentType("application/json")
+    .body(jsonMsg)
+    .post(uri"http://localhost:8094/api/v1/rpc").send(backend)
+  println(response)
 //  signalCli.stdin.writeLine(jsonMsg)
 //  signalCli.stdin.flush()
 
@@ -144,6 +152,8 @@ object main extends IOApp.Simple:
       events = scrapeResults.collect { case Right(e) => e }.flatten
       _ <- saveEvents(events).transact(xa)
       _ <- IO.println(events.mkString("\n"))
+      // send events via signal
+      _ <- IO(sendSignalMessage(events.mkString("\n")))
       // print errors
       errors = scrapeResults.collect { case Left(t) => t.getMessage }
       _ <- IO.println(errors.mkString("\n"))
