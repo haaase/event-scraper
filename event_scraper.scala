@@ -1,9 +1,9 @@
-//> using scala 3.3.1
+//> using scala 3.4.2
 //> using dep "net.ruippeixotog::scala-scraper::3.1.1"
 //> using dep com.lihaoyi::upickle::3.1.0
 //> using dep com.lihaoyi::os-lib::0.10.3
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
-//> using dep org.xerial:sqlite-jdbc:3.46.0.0
+//> using dep org.xerial:sqlite-jdbc:3.46.0.1
 //> using dep org.slf4j:slf4j-simple:2.0.13
 //> using file model.scala
 import java.nio.file.{Files, Paths}
@@ -11,13 +11,11 @@ import java.nio.charset.StandardCharsets
 import net.ruippeixotog.scalascraper.browser.{HtmlUnitBrowser, JsoupBrowser}
 import net.ruippeixotog.scalascraper.dsl.DSL.*
 import net.ruippeixotog.scalascraper.dsl.DSL.Extract.*
-import net.ruippeixotog.scalascraper.dsl.DSL.Parse.*
 import net.ruippeixotog.scalascraper.model.Element
 import upickle.default.*
 import upickle.*
 import doobie.*
 import doobie.implicits.*
-import cats.effect.IO
 import cats.effect.{IO, IOApp}
 import cats.implicits.*
 
@@ -25,7 +23,7 @@ import scala.concurrent.ExecutionContext
 import cats.effect.unsafe.implicits.global
 import doobie.util.log.LogEvent
 
-import java.time.{LocalDate, ZoneId, ZoneOffset}
+import java.time.{LocalDate, ZoneId}
 import java.time.format.DateTimeFormatter
 
 val xa = Transactor.fromDriverManager[IO](
@@ -45,6 +43,7 @@ val createTable: ConnectionIO[Int] =
   sql"""CREATE TABLE IF NOT EXISTS "events" (
     "id"	INTEGER,
     "title"	TEXT NOT NULL,
+    "subtitle" TEXT,
     "location" TEXT NOT NULL,
     "start"	NUMERIC NOT NULL,
     "end"	NUMERIC,
@@ -79,7 +78,32 @@ case class SignalCliParams(
     username: String = ""
 ) derives ReadWriter
 
-object Scraper806qm extends EventScraper:
+object OetingerVilla extends EventScraper:
+  def getEvents: List[Event] =
+    val events =
+      browser.get("https://oetingervilla.de") >> elementList(".card-event")
+
+    def parseEvent(event: Element): Event =
+      val title = event >> allText(".event__name")
+      val subtitle = event >> extractor(".top__heading") >> allText("h3")
+      val venue = "Oetinger Villa"
+      val date = (event >> extractor("h3.date", texts) match {
+        case (day :: month :: year :: Nil) =>
+          LocalDate.parse(
+            s"$day/$month/$year",
+            DateTimeFormatter.ofPattern("dd/MM/yy")
+          )
+      }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin")).toEpochSecond
+      Event(
+        title = title,
+        subtitle = Some(subtitle),
+        location = venue,
+        start = date
+      )
+
+    events.map(parseEvent)
+
+object `806qm` extends EventScraper:
   def getEvents: List[Event] =
     val doc = browser.get("https://806qm.de")
     val events = doc >> elementList(".type-tribe_events")
@@ -122,12 +146,17 @@ object Scraper806qm extends EventScraper:
 //  signalCli.stdin.flush()
 
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
-  val sql = "insert or ignore into events (title, location, start, end) values (?,?,?,?)"
-  Update[(String, String, EpochSecond, Option[EpochSecond])](sql)
-    .updateMany(events.map(e => (e.title, e.location, e.start, e.end)))
+  val sql =
+    "insert or ignore into events (title, subtitle, location, start, end) values (?,?,?,?,?)"
+  Update[(String, Option[String], String, EpochSecond, Option[EpochSecond])](
+    sql
+  )
+    .updateMany(
+      events.map(e => (e.title, e.subtitle, e.location, e.start, e.end))
+    )
 
 object main extends IOApp.Simple:
-  val scrapers: List[EventScraper] = List(Scraper806qm)
+  val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla)
   def run =
     for
       // create db

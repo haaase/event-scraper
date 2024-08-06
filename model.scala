@@ -2,6 +2,7 @@
 type EpochSecond = Long
 case class Event(
     title: String,
+    subtitle: Option[String] = None,
     location: String,
     start: EpochSecond,
     end: Option[EpochSecond] = None,
