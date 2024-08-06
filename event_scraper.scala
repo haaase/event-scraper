@@ -6,12 +6,9 @@
 //> using dep org.xerial:sqlite-jdbc:3.46.0.1
 //> using dep org.slf4j:slf4j-simple:2.0.13
 //> using file model.scala
+//> using file scrapers.scala
 import java.nio.file.{Files, Paths}
 import java.nio.charset.StandardCharsets
-import net.ruippeixotog.scalascraper.browser.{HtmlUnitBrowser, JsoupBrowser}
-import net.ruippeixotog.scalascraper.dsl.DSL.*
-import net.ruippeixotog.scalascraper.dsl.DSL.Extract.*
-import net.ruippeixotog.scalascraper.model.Element
 import upickle.default.*
 import upickle.*
 import doobie.*
@@ -52,8 +49,6 @@ val createTable: ConnectionIO[Int] =
     UNIQUE("title", "location", "start")
   )""".update.run
 
-// global objects
-val browser = JsoupBrowser()
 //val signalCli = os
 //  .proc(
 //    "signal-cli",
@@ -78,50 +73,6 @@ case class SignalCliParams(
     username: String = ""
 ) derives ReadWriter
 
-object OetingerVilla extends EventScraper:
-  def getEvents: List[Event] =
-    val events =
-      browser.get("https://oetingervilla.de") >> elementList(".card-event")
-
-    def parseEvent(event: Element): Event =
-      val title = event >> allText(".event__name")
-      val subtitle = event >> extractor(".top__heading") >> allText("h3")
-      val venue = "Oetinger Villa"
-      val date = (event >> extractor("h3.date", texts) match {
-        case (day :: month :: year :: Nil) =>
-          LocalDate.parse(
-            s"$day/$month/$year",
-            DateTimeFormatter.ofPattern("dd/MM/yy")
-          )
-      }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin")).toEpochSecond
-      Event(
-        title = title,
-        subtitle = Some(subtitle),
-        location = venue,
-        start = date
-      )
-
-    events.map(parseEvent)
-
-object `806qm` extends EventScraper:
-  def getEvents: List[Event] =
-    val doc = browser.get("https://806qm.de")
-    val events = doc >> elementList(".type-tribe_events")
-
-    def parseEvent(event: Element): Event =
-      val title = event >> allText(".tribe-events-list-event-title")
-      val venue = event >> allText(".venue")
-      val dateString = (event >> allText(".tribe-event-date-start b"))
-      val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
-      val date =
-        LocalDate
-          .parse(dateString, formatter)
-          .atStartOfDay()
-          .atZone(ZoneId.of("Europe/Berlin"))
-          .toEpochSecond
-      Event(title = title, location = venue, start = date)
-
-    events.map(parseEvent)
 
 //def writeFile =
 //  Files.write(

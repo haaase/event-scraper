@@ -1,0 +1,81 @@
+import net.ruippeixotog.scalascraper.browser.{HtmlUnitBrowser, JsoupBrowser}
+import net.ruippeixotog.scalascraper.dsl.DSL.*
+import net.ruippeixotog.scalascraper.dsl.DSL.Extract.*
+import net.ruippeixotog.scalascraper.model.Element
+import java.time.{LocalDate, ZoneId}
+import java.time.format.DateTimeFormatter
+
+// global objects
+val browser = JsoupBrowser()
+
+trait EventScraper:
+  def getEvents: List[Event]
+
+object OetingerVilla extends EventScraper:
+  def getEvents: List[Event] =
+    val events =
+      browser.get("https://oetingervilla.de") >> elementList(".card-event")
+
+    def parseEvent(event: Element): Event =
+      val title = event >> allText(".event__name")
+      val subtitle = event >> extractor(".top__heading") >> allText("h3")
+      val venue = "Oetinger Villa"
+      val date = (event >> extractor("h3.date", texts) match {
+        case (day :: month :: year :: Nil) =>
+          LocalDate.parse(
+            s"$day/$month/$year",
+            DateTimeFormatter.ofPattern("dd/MM/yy")
+          )
+      }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin"))
+      Event(
+        title = title,
+        subtitle = Some(subtitle),
+        location = venue,
+        start = date
+      )
+
+    events.map(parseEvent)
+
+object `806qm` extends EventScraper:
+  def getEvents: List[Event] =
+    val doc = browser.get("https://806qm.de")
+    val events = doc >> elementList(".type-tribe_events")
+
+    def parseEvent(event: Element): Event =
+      val title = event >> allText(".tribe-events-list-event-title")
+      val venue = event >> allText(".venue")
+      val dateString = (event >> allText(".tribe-event-date-start b"))
+      val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
+      val date =
+        LocalDate
+          .parse(dateString, formatter)
+          .atStartOfDay()
+          .atZone(ZoneId.of("Europe/Berlin"))
+      Event(title = title, location = venue, start = date)
+
+    events.map(parseEvent)
+
+object Schlosskeller extends EventScraper:
+  def getEvents: List[Event] =
+    val events =
+      browser.get("https://www.schlosskeller-darmstadt.de") >> elementList(".card-event")
+
+    def parseEvent(event: Element): Event =
+      val title = event >> allText(".event__name")
+      val subtitle = event >> extractor(".top__heading") >> allText("h3")
+      val venue = "Oetinger Villa"
+      val date = (event >> extractor("h3.date", texts) match {
+        case (day :: month :: year :: Nil) =>
+          LocalDate.parse(
+            s"$day/$month/$year",
+            DateTimeFormatter.ofPattern("dd/MM/yy")
+          )
+      }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin"))
+      Event(
+        title = title,
+        subtitle = Some(subtitle),
+        location = venue,
+        start = date
+      )
+
+    events.map(parseEvent)
