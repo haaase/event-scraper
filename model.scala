@@ -9,5 +9,9 @@ case class Event(
     start: ZonedDateTime,
     end: Option[ZonedDateTime] = None,
     announced: Option[ZonedDateTime] = None
-)
+):
+  override def toString =
+    s"""$title ${subtitle.map("(" + _ + ")").getOrElse("")}
+       |$location / ${start.toLocalDate.toString}
+       |""".stripMargin
 
