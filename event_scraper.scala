@@ -114,7 +114,7 @@ def getEvent(id: Int): ConnectionIO[Event] =
   sql"select * from events where id = $id".query[Event].stream.take(1).compile.onlyOrError
 
 object main extends IOApp.Simple:
-  val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla)
+  val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla, Schlosskeller)
   def run =
     for
       // create db
@@ -128,8 +128,8 @@ object main extends IOApp.Simple:
       // print errors
       errors = scrapeResults.collect { case Left(t) => t.getMessage }
       _ <- IO.println(errors.mkString("\n"))
-      event <- getEvent(1).transact(xa)
-      _ <- IO.println(event)
+//      event <- getEvent(1).transact(xa)
+//      _ <- IO.println(event)
     yield ()
 
 def testSignalCli() =

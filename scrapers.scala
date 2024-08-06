@@ -1,8 +1,9 @@
-import net.ruippeixotog.scalascraper.browser.{HtmlUnitBrowser, JsoupBrowser}
+import net.ruippeixotog.scalascraper.browser.JsoupBrowser
 import net.ruippeixotog.scalascraper.dsl.DSL.*
 import net.ruippeixotog.scalascraper.dsl.DSL.Extract.*
 import net.ruippeixotog.scalascraper.model.Element
-import java.time.{LocalDate, ZoneId}
+
+import java.time.{LocalDate, Year, ZoneId}
 import java.time.format.DateTimeFormatter
 
 // global objects
@@ -58,17 +59,17 @@ object `806qm` extends EventScraper:
 object Schlosskeller extends EventScraper:
   def getEvents: List[Event] =
     val events =
-      browser.get("https://www.schlosskeller-darmstadt.de") >> elementList(".card-event")
+      browser.get("https://www.schlosskeller-darmstadt.de") >> elementList(".card.fxr")
 
     def parseEvent(event: Element): Event =
-      val title = event >> allText(".event__name")
-      val subtitle = event >> extractor(".top__heading") >> allText("h3")
-      val venue = "Oetinger Villa"
-      val date = (event >> extractor("h3.date", texts) match {
-        case (day :: month :: year :: Nil) =>
+      val title = event >> allText("h3.event-title")
+      val subtitle = event >> allText(".event-description")
+      val venue = "Schlosskeller"
+      val date = (event >> extractor("span.date span", texts) match {
+        case (weekday :: day :: month :: Nil) =>
           LocalDate.parse(
-            s"$day/$month/$year",
-            DateTimeFormatter.ofPattern("dd/MM/yy")
+            s"$day/${month.capitalize}/${Year.now().getValue}",
+            DateTimeFormatter.ofPattern("dd/LLL/yyyy")
           )
       }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin"))
       Event(
