@@ -20,8 +20,7 @@ import scala.concurrent.ExecutionContext
 import cats.effect.unsafe.implicits.global
 import doobie.util.log.LogEvent
 
-import java.time.{LocalDate, ZoneId}
-import java.time.format.DateTimeFormatter
+import java.time.{Instant, ZonedDateTime, ZoneId}
 
 val xa = Transactor.fromDriverManager[IO](
   driver = "org.sqlite.JDBC",
@@ -96,15 +95,23 @@ case class SignalCliParams(
 //  signalCli.stdin.writeLine(jsonMsg)
 //  signalCli.stdin.flush()
 
+given Put[ZonedDateTime] =
+  Put[Long].tcontramap((x: ZonedDateTime) => x.toEpochSecond)
+given Get[ZonedDateTime] =
+  Get[Long].tmap((x: Long) => ZonedDateTime.ofInstant(Instant.ofEpochSecond(x), ZoneId.of("Europe/Berlin")))
+
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
   val sql =
     "insert or ignore into events (title, subtitle, location, start, end) values (?,?,?,?,?)"
-  Update[(String, Option[String], String, EpochSecond, Option[EpochSecond])](
+  Update[(String, Option[String], String, ZonedDateTime, Option[ZonedDateTime])](
     sql
   )
     .updateMany(
       events.map(e => (e.title, e.subtitle, e.location, e.start, e.end))
     )
+
+def getEvent(id: Int): ConnectionIO[Event] =
+  sql"select * from events where id = $id".query[Event].stream.take(1).compile.onlyOrError
 
 object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla)
@@ -121,6 +128,8 @@ object main extends IOApp.Simple:
       // print errors
       errors = scrapeResults.collect { case Left(t) => t.getMessage }
       _ <- IO.println(errors.mkString("\n"))
+      event <- getEvent(1).transact(xa)
+      _ <- IO.println(event)
     yield ()
 
 def testSignalCli() =

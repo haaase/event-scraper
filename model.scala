@@ -1,13 +1,13 @@
+import java.time.ZonedDateTime
 //// type definitions
 type EpochSecond = Long
 case class Event(
+    id: Option[Int] = None,
     title: String,
     subtitle: Option[String] = None,
     location: String,
-    start: EpochSecond,
-    end: Option[EpochSecond] = None,
-    announced: Option[EpochSecond] = None
+    start: ZonedDateTime,
+    end: Option[ZonedDateTime] = None,
+    announced: Option[ZonedDateTime] = None
 )
 
-trait EventScraper:
-  def getEvents: List[Event]
