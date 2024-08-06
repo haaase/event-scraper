@@ -41,11 +41,18 @@ val createTable: ConnectionIO[Int] =
     "title"	TEXT NOT NULL,
     "subtitle" TEXT,
     "location" TEXT NOT NULL,
-    "start"	NUMERIC NOT NULL,
-    "end"	NUMERIC,
-    "announced"	NUMERIC,
+    "start_epoch"	NUMERIC NOT NULL,
+    "end_epoch"	NUMERIC,
     PRIMARY KEY("id" AUTOINCREMENT),
-    UNIQUE("title", "location", "start")
+    UNIQUE("title", "location", "start_epoch")
+  )""".update.run
+
+val createAnnounced: ConnectionIO[Int] =
+  sql"""CREATE TABLE IF NOT EXISTS "events_announced"(
+    "event_id" INTEGER NOT NULL,
+    "announced_epoch" NUMERIC,
+    PRIMARY KEY ("event_id"),
+    FOREIGN KEY ("event_id") REFERENCES "events"("id") ON UPDATE CASCADE ON DELETE CASCADE
   )""".update.run
 
 //val signalCli = os
@@ -72,7 +79,6 @@ case class SignalCliParams(
     username: String = ""
 ) derives ReadWriter
 
-
 //def writeFile =
 //  Files.write(
 //    Paths.get("events.txt"),
@@ -98,12 +104,19 @@ case class SignalCliParams(
 given Put[ZonedDateTime] =
   Put[Long].tcontramap((x: ZonedDateTime) => x.toEpochSecond)
 given Get[ZonedDateTime] =
-  Get[Long].tmap((x: Long) => ZonedDateTime.ofInstant(Instant.ofEpochSecond(x), ZoneId.of("Europe/Berlin")))
+  Get[Long].tmap((x: Long) =>
+    ZonedDateTime.ofInstant(
+      Instant.ofEpochSecond(x),
+      ZoneId.of("Europe/Berlin")
+    )
+  )
 
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
   val sql =
-    "insert or ignore into events (title, subtitle, location, start, end) values (?,?,?,?,?)"
-  Update[(String, Option[String], String, ZonedDateTime, Option[ZonedDateTime])](
+    "insert or ignore into events (title, subtitle, location, start_epoch, end_epoch) values (?,?,?,?,?)"
+  Update[
+    (String, Option[String], String, ZonedDateTime, Option[ZonedDateTime])
+  ](
     sql
   )
     .updateMany(
@@ -111,7 +124,12 @@ def saveEvents(events: List[Event]): ConnectionIO[Int] =
     )
 
 def getEvent(id: Int): ConnectionIO[Event] =
-  sql"select * from events where id = $id".query[Event].stream.take(1).compile.onlyOrError
+  sql"select * from events left join events_announced where id = $id"
+    .query[Event]
+    .stream
+    .take(1)
+    .compile
+    .onlyOrError
 
 object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla, Schlosskeller)
@@ -119,6 +137,7 @@ object main extends IOApp.Simple:
     for
       // create db
       _ <- createTable.transact(xa)
+      _ <- createAnnounced.transact(xa)
       // scrape websites
       scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).parSequence
       // write results
