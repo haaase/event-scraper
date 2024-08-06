@@ -80,22 +80,22 @@ case class SignalCliParams(
 ) derives ReadWriter
 
 object Scraper806qm extends EventScraper:
-  val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
-//  val dt = formatter.parseDateTime(string)
   def getEvents: List[Event] =
     val doc = browser.get("https://806qm.de")
     val events = doc >> elementList(".type-tribe_events")
 
     def parseEvent(event: Element): Event =
       val title = event >> allText(".tribe-events-list-event-title")
+      val venue = event >> allText(".venue")
       val dateString = (event >> allText(".tribe-event-date-start b"))
+      val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
       val date =
         LocalDate
           .parse(dateString, formatter)
           .atStartOfDay()
           .atZone(ZoneId.of("Europe/Berlin"))
           .toEpochSecond
-      Event(title = title, location = "806qm", start = date)
+      Event(title = title, location = venue, start = date)
 
     events.map(parseEvent)
 
@@ -130,7 +130,8 @@ object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(Scraper806qm)
   def run =
     for
-      _ <- createTable.transact(xa) // create db
+      // create db
+      _ <- createTable.transact(xa)
       // scrape websites
       scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).parSequence
       // write results
