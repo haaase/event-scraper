@@ -1,6 +1,6 @@
 //> using scala 3.4.2
 //> using dep net.ruippeixotog::scala-scraper::3.1.1
-//> using dep com.softwaremill.sttp.client3::core:3.9.7
+//> using dep com.softwaremill.sttp.client3::core:3.9.8
 //> using dep com.lihaoyi::upickle::3.1.0
 //> using dep com.lihaoyi::os-lib::0.10.3
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
@@ -15,7 +15,6 @@ import doobie.implicits.*
 import sttp.client3.*
 import upickle.*
 import upickle.default.*
-
 import java.time.{Instant, ZoneId, ZonedDateTime}
 
 // global objects
@@ -38,25 +37,6 @@ val createTable: ConnectionIO[Int] =
     PRIMARY KEY("id" AUTOINCREMENT),
     UNIQUE("title", "location", "start_epoch")
   )""".update.run
-
-//val createAnnounced: ConnectionIO[Int] =
-//  sql"""CREATE TABLE IF NOT EXISTS "events_announced"(
-//    "event_id" INTEGER NOT NULL,
-//    "announced_epoch" NUMERIC,
-//    PRIMARY KEY ("event_id"),
-//    FOREIGN KEY ("event_id") REFERENCES "events"("id") ON UPDATE CASCADE ON DELETE CASCADE
-//  )""".update.run
-
-//val signalCli = os
-//  .proc(
-//    "signal-cli",
-//    "--config",
-//    "/var/lib/signal-cli",
-//    "-a",
-//    sys.env("EVENTSCRAPER_PHONENUM"),
-//    "jsonRpc"
-//  )
-//  .spawn(stderr = os.Inherit, stdout = os.Inherit)
 
 // JSON RPC encoding
 case class SignalCliMessage(
@@ -90,8 +70,6 @@ def sendSignalMessage(m: String): Unit =
     .post(uri"http://localhost:8094/api/v1/rpc")
     .send(httpBackend)
   println(response)
-//  signalCli.stdin.writeLine(jsonMsg)
-//  signalCli.stdin.flush()
 
 given Put[ZonedDateTime] =
   Put[Long].tcontramap((x: ZonedDateTime) => x.toEpochSecond)
