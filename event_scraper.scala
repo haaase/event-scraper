@@ -5,37 +5,26 @@
 //> using dep com.lihaoyi::os-lib::0.10.3
 //> using dep org.tpolecat::doobie-core::1.0.0-RC4
 //> using dep org.xerial:sqlite-jdbc:3.46.0.1
-//> using dep org.slf4j:slf4j-simple:2.0.13
+//> using dep org.slf4j:slf4j-simple:2.0.15
 //> using file model.scala
 //> using file scrapers.scala
-import java.nio.file.{Files, Paths}
-import java.nio.charset.StandardCharsets
-import upickle.default.*
-import upickle.*
-import doobie.*
-import doobie.implicits.*
 import cats.effect.{IO, IOApp}
 import cats.implicits.*
-import sttp.client3._
+import doobie.*
+import doobie.implicits.*
+import sttp.client3.*
+import upickle.*
+import upickle.default.*
 
-import scala.concurrent.ExecutionContext
-import cats.effect.unsafe.implicits.global
-import doobie.util.log.LogEvent
+import java.time.{Instant, ZoneId, ZonedDateTime}
 
-import java.time.{Instant, ZonedDateTime, ZoneId}
-
+// global objects
+val httpBackend = HttpClientSyncBackend()
 val xa = Transactor.fromDriverManager[IO](
   driver = "org.sqlite.JDBC",
   url = "jdbc:sqlite:events.db",
   logHandler = None
 )
-
-val printSqlLogHandler: LogHandler[IO] = new LogHandler[IO] {
-  def run(logEvent: LogEvent): IO[Unit] =
-    IO {
-      println(logEvent.sql)
-    }
-}
 
 val createTable: ConnectionIO[Int] =
   sql"""CREATE TABLE IF NOT EXISTS "events" (
@@ -45,17 +34,18 @@ val createTable: ConnectionIO[Int] =
     "location" TEXT NOT NULL,
     "start_epoch"	NUMERIC NOT NULL,
     "end_epoch"	NUMERIC,
+    "announced_epoch" NUMERIC,
     PRIMARY KEY("id" AUTOINCREMENT),
     UNIQUE("title", "location", "start_epoch")
   )""".update.run
 
-val createAnnounced: ConnectionIO[Int] =
-  sql"""CREATE TABLE IF NOT EXISTS "events_announced"(
-    "event_id" INTEGER NOT NULL,
-    "announced_epoch" NUMERIC,
-    PRIMARY KEY ("event_id"),
-    FOREIGN KEY ("event_id") REFERENCES "events"("id") ON UPDATE CASCADE ON DELETE CASCADE
-  )""".update.run
+//val createAnnounced: ConnectionIO[Int] =
+//  sql"""CREATE TABLE IF NOT EXISTS "events_announced"(
+//    "event_id" INTEGER NOT NULL,
+//    "announced_epoch" NUMERIC,
+//    PRIMARY KEY ("event_id"),
+//    FOREIGN KEY ("event_id") REFERENCES "events"("id") ON UPDATE CASCADE ON DELETE CASCADE
+//  )""".update.run
 
 //val signalCli = os
 //  .proc(
@@ -81,13 +71,6 @@ case class SignalCliParams(
     username: String = ""
 ) derives ReadWriter
 
-//def writeFile =
-//  Files.write(
-//    Paths.get("events.txt"),
-//    getEventList().getBytes(StandardCharsets.UTF_8)
-//  )
-val backend = HttpClientSyncBackend()
-
 def sendSignalMessage(m: String): Unit =
   val jsonMsg = write(
     SignalCliMessage(
@@ -104,7 +87,8 @@ def sendSignalMessage(m: String): Unit =
   val response = basicRequest
     .contentType("application/json")
     .body(jsonMsg)
-    .post(uri"http://localhost:8094/api/v1/rpc").send(backend)
+    .post(uri"http://localhost:8094/api/v1/rpc")
+    .send(httpBackend)
   println(response)
 //  signalCli.stdin.writeLine(jsonMsg)
 //  signalCli.stdin.flush()
@@ -124,20 +108,37 @@ def saveEvents(events: List[Event]): ConnectionIO[Int] =
     "insert or ignore into events (title, subtitle, location, start_epoch, end_epoch) values (?,?,?,?,?)"
   Update[
     (String, Option[String], String, ZonedDateTime, Option[ZonedDateTime])
-  ](
-    sql
-  )
+  ](sql)
     .updateMany(
       events.map(e => (e.title, e.subtitle, e.location, e.start, e.end))
     )
 
 def getEvent(id: Int): ConnectionIO[Event] =
-  sql"select * from events left join events_announced where id = $id"
+  sql"select * from events where id = $id"
     .query[Event]
-    .stream
-    .take(1)
-    .compile
-    .onlyOrError
+    .unique
+
+// https://stackoverflow.com/questions/71212284/doobie-lifting-arbitrary-effect-into-connectionio-ce3
+def announceNewEvents: IO[Unit] =
+  WeakAsync.liftK[IO, ConnectionIO].use { fk =>
+    val selectNew =
+      sql"select * from events where announced_epoch IS NULL ORDER BY start_epoch"
+    val updateAnnounced =
+      sql"update events SET announced_epoch = ${Instant.now().getEpochSecond} where announced_epoch IS NULL"
+
+    val transaction = for {
+      newEvents <- selectNew.query[Event].to[List]
+      _ <- fk(
+        IO(
+          if newEvents.nonEmpty then
+            sendSignalMessage(newEvents.mkString("\n"))
+        )
+      )
+      _ <- updateAnnounced.update.run
+    } yield ()
+
+    transaction.transact(xa)
+  }
 
 object main extends IOApp.Simple:
   val scrapers: List[EventScraper] = List(`806qm`, OetingerVilla, Schlosskeller)
@@ -145,29 +146,16 @@ object main extends IOApp.Simple:
     for
       // create db
       _ <- createTable.transact(xa)
-      _ <- createAnnounced.transact(xa)
       // scrape websites
       scrapeResults <- scrapers.map(s => IO(s.getEvents).attempt).parSequence
       // write results
       events = scrapeResults.collect { case Right(e) => e }.flatten
       _ <- saveEvents(events).transact(xa)
-      _ <- IO.println(events.mkString("\n"))
-      // send events via signal
-      _ <- IO(sendSignalMessage(events.mkString("\n")))
+      // announce events via signal
+      _ <- announceNewEvents
       // print errors
       errors = scrapeResults.collect { case Left(t) => t.getMessage }
       _ <- IO.println(errors.mkString("\n"))
 //      event <- getEvent(1).transact(xa)
 //      _ <- IO.println(event)
     yield ()
-
-def testSignalCli() =
-  createTable.transact(xa).unsafeRunSync()
-// sendSignalMessage(s"${getEvents}")
-//  var output = signalCli.stdout.readLine()
-//  while (output != null) {
-//    println(output)
-//    output = signalCli.stdout.readLine()
-//  }
-  Thread.sleep(10000) // wait 10s
-//  signalCli.destroy()
