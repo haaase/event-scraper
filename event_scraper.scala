@@ -15,7 +15,7 @@ import doobie.implicits.*
 import sttp.client3.*
 import upickle.*
 import upickle.default.*
-import java.time.{Instant, ZoneId, ZonedDateTime}
+import java.time.*
 
 // global objects
 val httpBackend = HttpClientSyncBackend()
@@ -96,6 +96,23 @@ def getEvent(id: Int): ConnectionIO[Event] =
     .query[Event]
     .unique
 
+def getEventsNextWeek: ConnectionIO[List[Event]] =
+  val currDay = LocalDate.now()
+  val daysTillSunday = currDay.getDayOfWeek.getValue
+  val nextSunday =
+    if daysTillSunday == 0 then currDay.plusDays(7)
+    else currDay.plusDays(daysTillSunday)
+  val endOfNextWeek = LocalDateTime
+    .of(nextSunday, LocalTime.MAX)
+    .atZone(ZoneId.of("Europe/Berlin"))
+  val startOfNextWeek = LocalDateTime
+    .of(nextSunday.minusDays(6), LocalTime.MIN)
+    .atZone(ZoneId.of("Europe/Berlin"))
+
+  sql"select * from events where start_epoch >= ${startOfNextWeek.toEpochSecond} AND end_epoch <= ${endOfNextWeek.toEpochSecond} ORDER BY start_epoch"
+    .query[Event]
+    .to[List]
+
 // https://stackoverflow.com/questions/71212284/doobie-lifting-arbitrary-effect-into-connectionio-ce3
 def announceNewEvents: IO[Unit] =
   WeakAsync.liftK[IO, ConnectionIO].use { fk =>
@@ -108,8 +125,7 @@ def announceNewEvents: IO[Unit] =
       newEvents <- selectNew.query[Event].to[List]
       _ <- fk(
         IO(
-          if newEvents.nonEmpty then
-            sendSignalMessage(newEvents.mkString("\n"))
+          if newEvents.nonEmpty then sendSignalMessage(newEvents.mkString("\n"))
         )
       )
       _ <- updateAnnounced.update.run
