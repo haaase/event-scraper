@@ -23,6 +23,7 @@ val xa = Transactor.fromDriverManager[IO](
   logHandler = None
 )
 
+// database transactions
 val createTable: ConnectionIO[Int] =
   sql"""CREATE TABLE IF NOT EXISTS "events" (
     "id"	INTEGER,
@@ -57,21 +58,38 @@ def getEvent(id: Int): ConnectionIO[Event] =
     .unique
 
 def getEventsNextWeek: ConnectionIO[List[Event]] =
-  val currDay = LocalDate.now()
-  val daysTillSunday = currDay.getDayOfWeek.getValue
-  val nextSunday =
-    if daysTillSunday == 0 then currDay.plusDays(7)
-    else currDay.plusDays(daysTillSunday)
   val endOfNextWeek = LocalDateTime
     .of(nextSunday, LocalTime.MAX)
     .atZone(ZoneId.of("Europe/Berlin"))
   val startOfNextWeek = LocalDateTime
-    .of(nextSunday.minusDays(6), LocalTime.MIN)
+    .of(nextMonday, LocalTime.MIN)
     .atZone(ZoneId.of("Europe/Berlin"))
 
-  sql"select * from events where start_epoch >= ${startOfNextWeek.toEpochSecond} AND end_epoch <= ${endOfNextWeek.toEpochSecond} ORDER BY start_epoch"
+  println(s"${startOfNextWeek.toEpochSecond}, ${endOfNextWeek.toEpochSecond}")
+  sql"select * from events where start_epoch >= ${startOfNextWeek.toEpochSecond} AND start_epoch <= ${endOfNextWeek.toEpochSecond} ORDER BY start_epoch"
     .query[Event]
     .to[List]
+// end database transactions
+
+def nextSunday: LocalDate =
+  val currDay = LocalDate.now()
+  val daysTillSunday = currDay.getDayOfWeek.getValue
+  if daysTillSunday == 0 then currDay.plusDays(7)
+  else currDay.plusDays(daysTillSunday)
+
+def nextMonday: LocalDate =
+  nextSunday.minusDays(6)
+
+def announceNextWeeksEvents: IO[Unit] =
+  for
+    events <- getEventsNextWeek.transact(xa)
+    message = s"""Events Next Week ($nextMonday - $nextSunday)
+         |================
+         |${events.mkString { "\n\n" }}
+         |""".stripMargin
+    _ <- IO(sendSignalMessage(message))
+    _ <- markAsAnnounced(events).transact(xa)
+  yield ()
 
 // https://stackoverflow.com/questions/71212284/doobie-lifting-arbitrary-effect-into-connectionio-ce3
 def announceNewEvents: IO[Unit] =
@@ -85,7 +103,8 @@ def announceNewEvents: IO[Unit] =
       newEvents <- selectNew.query[Event].to[List]
       _ <- fk(
         IO(
-          if newEvents.nonEmpty then sendSignalMessage(newEvents.mkString("\n"))
+          if newEvents.nonEmpty then
+            IO(sendSignalMessage(newEvents.mkString("\n")))
         )
       )
       _ <- updateAnnounced.update.run
@@ -105,10 +124,12 @@ object main extends IOApp.Simple:
       // write results
       events = scrapeResults.collect { case Right(e) => e }.flatten
       _ <- saveEvents(events).transact(xa)
-      // announce events via signal
+      // announce new events via signal
       _ <- announceNewEvents
+      // announce new events if its Saturday
+      _ <- announceNextWeeksEvents
       // print errors
-      errors = scrapeResults.collect { case Left(t) => t.getMessage }
+      errors = scrapeResults.collect { case Left(t) => s"ERROR: $t" }
       _ <- IO.println(errors.mkString("\n"))
 //      event <- getEvent(1).transact(xa)
 //      _ <- IO.println(event)
