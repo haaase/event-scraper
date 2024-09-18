@@ -67,8 +67,14 @@ object Schlosskeller extends EventScraper:
       val venue = "Schlosskeller"
       val date = (event >> extractor("span.date span", texts) match {
         case (weekday :: day :: month :: Nil) =>
+          val monthEngl = month.capitalize match
+            case "Mär" => "Mar"
+            case "Mai" => "May"
+            case "Okt" => "Oct"
+            case "Dez" => "Dec"
+            case m => m
           LocalDate.parse(
-            s"$day/${month.capitalize}/${Year.now().getValue}",
+            s"$day/$monthEngl/${Year.now().getValue}",
             DateTimeFormatter.ofPattern("dd/LLL/yyyy")
           )
       }).atStartOfDay().atZone(ZoneId.of("Europe/Berlin"))
