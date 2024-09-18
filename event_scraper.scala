@@ -100,10 +100,14 @@ def announceNewEvents: IO[Unit] =
 
     val transaction = for {
       newEvents <- selectNew.query[Event].to[List]
+      message =
+        s"""New events announced!
+           |================
+           |${newEvents.mkString("\n\n")}
+           |""".stripMargin
       _ <- fk(
         IO(
-          if newEvents.nonEmpty then
-            IO(sendSignalMessage(newEvents.mkString("\n")))
+          if newEvents.nonEmpty then sendSignalMessage(message)
         )
       )
       _ <- updateAnnounced.update.run

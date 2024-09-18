@@ -1,8 +1,12 @@
 import doobie.{Get, Put}
 import java.time.{Instant, ZoneId, ZonedDateTime}
+import java.time.format.DateTimeFormatter
 
 //// type definitions
 type EpochSecond = Long
+// datetime format
+// Wed, 18. Sep 2024, 18:00
+val formatter = DateTimeFormatter.ofPattern("ccc, dd. LLL, yyyy")
 case class Event(
     id: Option[Int] = None,
     title: String,
@@ -14,7 +18,7 @@ case class Event(
 ):
   override def toString =
     s"""$title ${subtitle.map("(" + _ + ")").getOrElse("")}
-       |$location / ${start.toLocalDate.toString}""".stripMargin
+       |$location / ${start.format(formatter)}""".stripMargin
 
 // doobie translations
 given Put[ZonedDateTime] =
