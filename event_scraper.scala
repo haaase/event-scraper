@@ -8,17 +8,15 @@
 //> using dep org.slf4j:slf4j-simple:2.0.15
 //> using file model.scala
 //> using file scrapers.scala
+//> using file signal.scala
 import cats.effect.{IO, IOApp}
 import cats.implicits.*
 import doobie.*
 import doobie.implicits.*
-import sttp.client3.*
-import upickle.*
-import upickle.default.*
+
 import java.time.*
 
-// global objects
-val httpBackend = HttpClientSyncBackend()
+// global objects: database connection
 val xa = Transactor.fromDriverManager[IO](
   driver = "org.sqlite.JDBC",
   url = "jdbc:sqlite:events.db",
@@ -38,39 +36,10 @@ val createTable: ConnectionIO[Int] =
     UNIQUE("title", "location", "start_epoch")
   )""".update.run
 
-// JSON RPC encoding
-case class SignalCliMessage(
-    jsonrpc: String,
-    method: String,
-    id: String,
-    params: SignalCliParams
-) derives ReadWriter
-case class SignalCliParams(
-    message: String = "",
-    groupId: String = "",
-    username: String = ""
-) derives ReadWriter
-
-def sendSignalMessage(m: String): Unit =
-  val jsonMsg = write(
-    SignalCliMessage(
-      jsonrpc = "2.0",
-      method = "send",
-      params = SignalCliParams(
-        message = m,
-        groupId = sys.env("EVENTSCRAPER_GROUPID")
-      ),
-      id = java.util.UUID.randomUUID.toString
-    )
-  )
-  println(jsonMsg)
-  val response = basicRequest
-    .contentType("application/json")
-    .body(jsonMsg)
-    .post(uri"http://localhost:8094/api/v1/rpc")
-    .send(httpBackend)
-  println(response)
-  )
+def markAsAnnounced(events: List[Event]) =
+  val timestamp = Instant.now().getEpochSecond
+  val sql = s"update events SET announced_epoch = $timestamp where id IS ?"
+  Update[Int](sql).updateMany(events.map(_.id.get))
 
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
   val sql =
