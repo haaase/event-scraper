@@ -70,15 +70,6 @@ def sendSignalMessage(m: String): Unit =
     .post(uri"http://localhost:8094/api/v1/rpc")
     .send(httpBackend)
   println(response)
-
-given Put[ZonedDateTime] =
-  Put[Long].tcontramap((x: ZonedDateTime) => x.toEpochSecond)
-given Get[ZonedDateTime] =
-  Get[Long].tmap((x: Long) =>
-    ZonedDateTime.ofInstant(
-      Instant.ofEpochSecond(x),
-      ZoneId.of("Europe/Berlin")
-    )
   )
 
 def saveEvents(events: List[Event]): ConnectionIO[Int] =
