@@ -60,7 +60,9 @@ object `806qm` extends EventScraper:
 object Schlosskeller extends EventScraper:
   def getEvents: List[Event] =
     val events =
-      browser.get("https://www.schlosskeller-darmstadt.de") >> elementList(".card.fxr")
+      browser.get("https://www.schlosskeller-darmstadt.de") >> elementList(
+        ".card.fxr"
+      )
 
     def parseEvent(event: Element): Event =
       val title = event >> allText("h3.event-title")
@@ -69,11 +71,12 @@ object Schlosskeller extends EventScraper:
       val date = (event >> extractor("span.date span", texts) match {
         case (weekday :: day :: month :: Nil) =>
           val monthEngl = month.capitalize match
-            case "Mär" => "Mar"
-            case "Mai" => "May"
-            case "Okt" => "Oct"
-            case "Dez" => "Dec"
-            case m => m
+            case "Mär"  => "Mar"
+            case "Mai"  => "May"
+            case "Sept" => "Sep"
+            case "Okt"  => "Oct"
+            case "Dez"  => "Dec"
+            case m      => m
           LocalDate.parse(
             s"$day/$monthEngl/${Year.now().getValue}",
             DateTimeFormatter.ofPattern("dd/LLL/yyyy")
