@@ -65,7 +65,6 @@ def getEventsNextWeek: ConnectionIO[List[Event]] =
     .of(nextMonday, LocalTime.MIN)
     .atZone(ZoneId.of("Europe/Berlin"))
 
-  println(s"${startOfNextWeek.toEpochSecond}, ${endOfNextWeek.toEpochSecond}")
   sql"select * from events where start_epoch >= ${startOfNextWeek.toEpochSecond} AND start_epoch <= ${endOfNextWeek.toEpochSecond} ORDER BY start_epoch"
     .query[Event]
     .to[List]
