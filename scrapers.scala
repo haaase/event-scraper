@@ -44,7 +44,8 @@ object `806qm` extends EventScraper:
 
     def parseEvent(event: Element): Event =
       val title = event >> allText(".tribe-events-list-event-title")
-      val venue = event >> allText(".venue")
+      val room = event >> allText(".venue")
+      val venue = if room.isBlank then "806qm" else s"806qm ($room)"
       val dateString = (event >> allText(".tribe-event-date-start b"))
       val formatter = DateTimeFormatter.ofPattern("dd–MM–yyyy")
       val date =
