@@ -72,7 +72,7 @@ def getEventsNextWeek: ConnectionIO[List[Event]] =
 
 def nextSunday: LocalDate =
   val currDay = LocalDate.now()
-  val daysTillSunday = currDay.getDayOfWeek.getValue
+  val daysTillSunday = 7 - currDay.getDayOfWeek.getValue
   if daysTillSunday == 0 then currDay.plusDays(7)
   else currDay.plusDays(daysTillSunday)
 
