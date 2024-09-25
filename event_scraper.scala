@@ -59,10 +59,10 @@ def getEvent(id: Int): ConnectionIO[Event] =
 
 def getEventsNextWeek: ConnectionIO[List[Event]] =
   val endOfNextWeek = LocalDateTime
-    .of(nextSunday, LocalTime.MAX)
+    .of(nextWeekSunday, LocalTime.MAX)
     .atZone(ZoneId.of("Europe/Berlin"))
   val startOfNextWeek = LocalDateTime
-    .of(nextMonday, LocalTime.MIN)
+    .of(nextWeekMonday, LocalTime.MIN)
     .atZone(ZoneId.of("Europe/Berlin"))
 
   sql"select * from events where start_epoch >= ${startOfNextWeek.toEpochSecond} AND start_epoch <= ${endOfNextWeek.toEpochSecond} ORDER BY start_epoch"
@@ -70,19 +70,18 @@ def getEventsNextWeek: ConnectionIO[List[Event]] =
     .to[List]
 // end database transactions
 
-def nextSunday: LocalDate =
+def nextWeekSunday: LocalDate =
   val currDay = LocalDate.now()
-  val daysTillSunday = 7 - currDay.getDayOfWeek.getValue
-  if daysTillSunday == 0 then currDay.plusDays(7)
-  else currDay.plusDays(daysTillSunday)
+  val daysTillSundayNextWeek = 14 - currDay.getDayOfWeek.getValue
+  currDay.plusDays(daysTillSundayNextWeek)
 
-def nextMonday: LocalDate =
-  nextSunday.minusDays(6)
+def nextWeekMonday: LocalDate =
+  nextWeekSunday.minusDays(6)
 
 def announceNextWeeksEvents: IO[Unit] =
   for
     events <- getEventsNextWeek.transact(xa)
-    message = s"""Events Next Week ($nextMonday - $nextSunday)
+    message = s"""Events Next Week ($nextWeekMonday - $nextWeekSunday)
          |================
          |${events.mkString { "\n\n" }}
          |""".stripMargin
