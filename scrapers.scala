@@ -71,12 +71,11 @@ object Schlosskeller extends EventScraper:
       val date = (event >> extractor("span.date span", texts) match {
         case (weekday :: day :: month :: Nil) =>
           val monthEngl = month.capitalize match
-            case "Mär"  => "Mar"
-            case "Mai"  => "May"
-            case "Sept" => "Sep"
-            case "Okt"  => "Oct"
-            case "Dez"  => "Dec"
-            case m      => m
+            case "Mär" => "Mar"
+            case "Mai" => "May"
+            case "Okt" => "Oct"
+            case "Dez" => "Dec"
+            case m     => m
           LocalDate.parse(
             s"$day/$monthEngl/${Year.now().getValue}",
             DateTimeFormatter.ofPattern("dd/LLL/yyyy")
