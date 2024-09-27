@@ -129,11 +129,10 @@ object main extends IOApp.Simple:
       // announce new events via signal
       _ <- announceNewEvents
       // announce new events if its Saturday
-//      _ <-
-//        if LocalDate.now().getDayOfWeek.getValue == 6 then
-//          announceNextWeeksEvents
-//        else IO.unit
-      _ <- announceNextWeeksEvents
+      _ <-
+        if LocalDate.now().getDayOfWeek.getValue == 6 then
+          announceNextWeeksEvents
+        else IO.unit
       // print errors
       errors = scrapeResults.collect { case Left(t) => s"ERROR: $t" }
       _ <- IO.println(errors.mkString("\n"))
